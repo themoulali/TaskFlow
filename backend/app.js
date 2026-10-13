@@ -1,17 +1,15 @@
 
 const express = require("express");
+const passport = require("./config/passport");
+const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 
-// Parse incoming JSON requests
 app.use(express.json());
-
-
-const authRoutes = require("./routes/authRoutes");
+app.use(passport.initialize());
 
 app.use("/api/auth", authRoutes);
 
-// Health-check endpoint
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,
