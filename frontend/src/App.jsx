@@ -1,85 +1,37 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { apiRequest } from './api/api.js'
 import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  closestCorners,
-  useDroppable,
+  DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors,
+  closestCorners, useDroppable,
 } from '@dnd-kit/core'
 import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-  sortableKeyboardCoordinates,
-  arrayMove,
+  SortableContext, useSortable, verticalListSortingStrategy,
+  sortableKeyboardCoordinates, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
-const initialTasks = [
-  {
-    id: 'task-1',
-    title: 'Design landing page',
-    description: 'Create the first draft of the new landing page.',
-    priority: 'High',
-    status: 'todo',
-  },
-  {
-    id: 'task-2',
-    title: 'Set up project structure',
-    description: 'Organize frontend components and folders.',
-    priority: 'Medium',
-    status: 'todo',
-  },
-  {
-    id: 'task-3',
-    title: 'Build authentication API',
-    description: 'Implement registration and login endpoints.',
-    priority: 'High',
-    status: 'progress',
-  },
-  {
-    id: 'task-4',
-    title: 'Create dashboard layout',
-    description: 'Build the main responsive dashboard.',
-    priority: 'Medium',
-    status: 'progress',
-  },
-  {
-    id: 'task-5',
-    title: 'Initialize repository',
-    description: 'Configure Git and the project workspace.',
-    priority: 'Low',
-    status: 'done',
-  },
-]
-
-const columns = [
-  { id: 'todo', title: 'To Do', color: 'bg-slate-400' },
-  { id: 'progress', title: 'In Progress', color: 'bg-blue-500' },
-  { id: 'done', title: 'Done', color: 'bg-emerald-500' },
-]
-
+const colors = ['bg-slate-400', 'bg-blue-500', 'bg-emerald-500']
 const priorityStyles = {
   High: 'bg-red-50 text-red-700',
   Medium: 'bg-amber-50 text-amber-700',
   Low: 'bg-emerald-50 text-emerald-700',
 }
+const normalizePriority = (value) => {
+  const text = String(value || 'medium').toLowerCase()
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+const mapTask = (task) => ({
+  id: task._id,
+  title: task.title,
+  description: task.description || '',
+  priority: normalizePriority(task.priority),
+  status: task.column?._id || task.column,
+  position: Number(task.position || 0),
+})
 
 function TaskCard({ task }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: task.id,
-    data: { status: task.status },
-  })
-
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: task.id, data: { status: task.status } })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -87,83 +39,39 @@ function TaskCard({ task }) {
   }
 
   return (
-    <article
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="cursor-grab touch-none rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-300 hover:shadow-md active:cursor-grabbing"
-    >
+    <article ref={setNodeRef} style={style} {...attributes} {...listeners}
+      className="cursor-grab touch-none rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-300 hover:shadow-md active:cursor-grabbing">
       <div className="mb-3 flex items-start justify-between gap-2">
-        <span
-          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${priorityStyles[task.priority]}`}
-        >
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${priorityStyles[task.priority] || priorityStyles.Medium}`}>
           {task.priority}
         </span>
         <span className="text-xs text-slate-400">↕ Drag</span>
       </div>
-
-      <h4 className="font-semibold leading-6 text-slate-900">
-        {task.title}
-      </h4>
-
-      <p className="mt-2 text-sm leading-5 text-slate-500">
-        {task.description}
-      </p>
-
+      <h4 className="font-semibold leading-6 text-slate-900">{task.title}</h4>
+      <p className="mt-2 text-sm leading-5 text-slate-500">{task.description || 'No description added.'}</p>
       <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-        <span className="text-xs text-slate-400">
-          {task.id.toUpperCase()}
-        </span>
-        <span
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700"
-          aria-label="TaskFlow member"
-        >
-          TF
-        </span>
+        <span className="text-xs text-slate-400">{String(task.id).slice(-8).toUpperCase()}</span>
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">TF</span>
       </div>
     </article>
   )
 }
 
 function KanbanColumn({ column, tasks }) {
-  const { setNodeRef } = useDroppable({
-    id: column.id,
-    data: { status: column.id },
-  })
-
-  const taskIds = tasks.map((task) => task.id)
-
+  const { setNodeRef } = useDroppable({ id: column.id, data: { status: column.id } })
   return (
-    <section
-      ref={setNodeRef}
-      className="flex min-h-80 min-w-0 flex-col rounded-2xl bg-slate-100 p-3 sm:p-4"
-      aria-label={`${column.title} column`}
-    >
+    <section ref={setNodeRef} className="flex min-h-80 min-w-0 flex-col rounded-2xl bg-slate-100 p-3 sm:p-4" aria-label={`${column.title} column`}>
       <div className="mb-4 flex items-center justify-between gap-2 px-1">
         <div className="flex items-center gap-2">
           <span className={`h-2.5 w-2.5 rounded-full ${column.color}`} />
           <h3 className="font-bold text-slate-800">{column.title}</h3>
         </div>
-        <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-slate-600">
-          {tasks.length}
-        </span>
+        <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-slate-600">{tasks.length}</span>
       </div>
-
-      <SortableContext
-        items={taskIds}
-        strategy={verticalListSortingStrategy}
-      >
+      <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-1 flex-col gap-3">
-          {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} />
-          ))}
-
-          {tasks.length === 0 && (
-            <div className="flex min-h-24 flex-1 items-center justify-center rounded-xl border-2 border-dashed border-slate-300 px-3 text-center text-sm text-slate-400">
-              Drop a task here
-            </div>
-          )}
+          {tasks.map((task) => <TaskCard key={task.id} task={task} />)}
+          {tasks.length === 0 && <div className="flex min-h-24 flex-1 items-center justify-center rounded-xl border-2 border-dashed border-slate-300 px-3 text-center text-sm text-slate-400">Drop a task here</div>}
         </div>
       </SortableContext>
     </section>
@@ -171,281 +79,249 @@ function KanbanColumn({ column, tasks }) {
 }
 
 function App() {
-  const [tasks, setTasks] = useState(initialTasks)
+  const [token, setToken] = useState(
+    () => localStorage.getItem('taskflow_token') || '',
+  )
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [tasks, setTasks] = useState([])
+  const [columns, setColumns] = useState([])
+  const [board, setBoard] = useState(null)
+  const [dataLoading, setDataLoading] = useState(false)
+  const [dataError, setDataError] = useState('')
   const [search, setSearch] = useState('')
   const [activeNav, setActiveNav] = useState('My Boards')
-  const activeBoard = 'TaskFlow Project'
   const [notice, setNotice] = useState('')
+  const activeBoard = board?.title || 'TaskFlow Project'
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  const visibleTasks = tasks.filter((task) =>
-    `${task.title} ${task.description}`
-      .toLowerCase()
-      .includes(search.toLowerCase()),
-  )
-
-  function handleDragEnd(event) {
-    const { active, over } = event
-
-    if (!over || active.id === over.id) return
-
-    setTasks((currentTasks) => {
-      const oldIndex = currentTasks.findIndex(
-        (task) => task.id === active.id,
-      )
-      const newIndex = currentTasks.findIndex(
-        (task) => task.id === over.id,
-      )
-
-      if (oldIndex === -1) return currentTasks
-
-      const sourceTask = currentTasks[oldIndex]
-      const targetTask = currentTasks[newIndex]
-
-      // Dropping on another task moves the task into that task's column.
-      if (targetTask) {
-        if (sourceTask.status === targetTask.status) {
-          return arrayMove(currentTasks, oldIndex, newIndex)
-        }
-
-        const updated = currentTasks.map((task) =>
-          task.id === active.id
-            ? { ...task, status: targetTask.status }
-            : task,
-        )
-
-        const movedTask = updated.find((task) => task.id === active.id)
-        const withoutMoved = updated.filter((task) => task.id !== active.id)
-        const targetIndex = withoutMoved.findIndex(
-          (task) => task.id === targetTask.id,
-        )
-
-        withoutMoved.splice(targetIndex, 0, movedTask)
-        return withoutMoved
-      }
-
-      // Dropping over an empty column is handled by column droppable data.
-      const targetStatus = over.data.current?.status
-
-      if (targetStatus && sourceTask.status !== targetStatus) {
-        return currentTasks.map((task) =>
-          task.id === active.id
-            ? { ...task, status: targetStatus }
-            : task,
-        )
-      }
-
-      return currentTasks
-    })
+  async function handleLogin(event) {
+    event.preventDefault()
+    setLoginError('')
+    setLoginLoading(true)
+    try {
+      const result = await apiRequest('/auth/login', {
+        method: 'POST',
+        body: { email: email.trim(), password },
+      })
+      if (!result.token) throw new Error('Login succeeded but no token was returned.')
+      localStorage.setItem('taskflow_token', result.token)
+      setToken(result.token)
+      setPassword('')
+    } catch (error) {
+      setLoginError(error.message || 'Unable to log in.')
+    } finally {
+      setLoginLoading(false)
+    }
   }
 
-  function createTask() {
+  useEffect(() => {
+    if (!token) return undefined
+    let cancelled = false
+
+    async function loadBoardData() {
+      setDataLoading(true)
+      setDataError('')
+      try {
+        const boardsResult = await apiRequest('/boards', { token })
+        const selectedBoard = boardsResult.data?.[0]
+        if (!selectedBoard) {
+          if (!cancelled) {
+            setBoard(null)
+            setColumns([])
+            setTasks([])
+            setDataError('No boards found. Create a board to get started.')
+          }
+          return
+        }
+        const [columnsResult, tasksResult] = await Promise.all([
+          apiRequest(`/boards/${selectedBoard._id}/columns`, { token }),
+          apiRequest(`/boards/${selectedBoard._id}/tasks`, { token }),
+        ])
+        const loadedColumns = (columnsResult.data || []).map((column, index) => ({
+          id: column._id,
+          title: column.title,
+          color: colors[index % colors.length],
+          position: Number(column.position || index),
+        }))
+        const loadedTasks = (tasksResult.data || []).map(mapTask)
+        if (!cancelled) {
+          setBoard(selectedBoard)
+          setColumns(loadedColumns)
+          setTasks(loadedTasks)
+        }
+      } catch (error) {
+        if (!cancelled) setDataError(error.message || 'Failed to load board data.')
+      } finally {
+        if (!cancelled) setDataLoading(false)
+      }
+    }
+    loadBoardData()
+    return () => { cancelled = true }
+  }, [token])
+
+  async function createTask() {
+    if (!board?._id) {
+      setNotice('')
+      setDataError('Please select a board before creating a task.')
+      return
+    }
     const title = window.prompt('Enter a task title:')
-
     if (!title?.trim()) return
+    const description = window.prompt('Enter a short task description:') || ''
+    const todoColumn = columns.find((column) => column.title.toLowerCase() === 'to do')
+    if (!todoColumn) {
+      setDataError('The To Do column was not found.')
+      return
+    }
+    try {
+      setDataError('')
+      setNotice('')
+      const result = await apiRequest(`/boards/${board._id}/tasks`, {
+        token,
+        method: 'POST',
+        body: { title: title.trim(), description: description.trim(), columnId: todoColumn.id, priority: 'medium' },
+      })
+      if (!result.data?._id) throw new Error('The API did not return the saved task.')
+      setTasks((current) => [...current, mapTask(result.data)])
+      setNotice('Task created and saved successfully.')
+    } catch (error) {
+      setDataError(error.message || 'Failed to create task.')
+    }
+  }
 
-    const description =
-      window.prompt('Enter a short task description:') ||
-      'No description added.'
+  async function handleDragEnd(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id || !board?._id) return
+    const sourceTask = tasks.find((task) => task.id === active.id)
+    if (!sourceTask) return
+    const targetTask = tasks.find((task) => task.id === over.id)
+    const targetColumnId = targetTask ? targetTask.status : (over.data.current?.status || over.id)
+    if (!columns.some((column) => column.id === targetColumnId)) return
 
-    setTasks((current) => [
-      ...current,
-      {
-        id: `task-${Date.now()}`,
-        title: title.trim(),
-        description: description.trim(),
-        priority: 'Medium',
-        status: 'todo',
-      },
-    ])
-    setNotice('Task created successfully.')
+    const oldIndex = tasks.findIndex((task) => task.id === active.id)
+    const targetIndex = targetTask
+      ? tasks.findIndex((task) => task.id === targetTask.id)
+      : tasks.filter((task) => task.status === targetColumnId).length
+    const originalTasks = tasks
+    const optimisticTasks = sourceTask.status === targetColumnId && targetTask
+      ? arrayMove(tasks, oldIndex, Math.max(0, targetIndex))
+      : tasks.map((task) => task.id === active.id ? { ...task, status: targetColumnId } : task)
+    setTasks(optimisticTasks)
+    setDataError('')
+    setNotice('')
+    try {
+      const response = await apiRequest(`/tasks/${sourceTask.id}`, {
+        token,
+        method: 'PATCH',
+        body: { columnId: targetColumnId, position: Math.max(0, targetIndex) },
+      })
+      if (response.data) {
+        setTasks((current) => current.map((task) =>
+          task.id === sourceTask.id ? { ...task, ...mapTask(response.data) } : task))
+      }
+      setNotice('Task movement saved successfully.')
+    } catch (error) {
+      setTasks(originalTasks)
+      setDataError(error.message || 'Failed to save task movement. The board was restored.')
+    }
+  }
+
+  const visibleTasks = tasks.filter((task) =>
+    `${task.title} ${task.description}`.toLowerCase().includes(search.toLowerCase()),
+  )
+  const inProgressIds = columns.filter((column) => column.title.toLowerCase() === 'in progress').map((column) => column.id)
+  const doneIds = columns.filter((column) => column.title.toLowerCase() === 'done').map((column) => column.id)
+
+  if (!token) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-5">
+        <form onSubmit={handleLogin} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-xl font-bold text-white">T</div>
+            <div><h1 className="text-2xl font-bold text-slate-900">TaskFlow</h1><p className="text-sm text-slate-500">Sign in to your workspace</p></div>
+          </div>
+          <label className="mb-4 block text-sm font-medium text-slate-700">Email
+            <input type="email" required autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" placeholder="you@example.com" />
+          </label>
+          <label className="mb-4 block text-sm font-medium text-slate-700">Password
+            <input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" placeholder="Enter your password" />
+          </label>
+          {loginError && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{loginError}</p>}
+          <button type="submit" disabled={loginLoading} className="w-full rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60">
+            {loginLoading ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+      </main>
+    )
   }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 md:flex">
       <aside className="flex w-full shrink-0 flex-col bg-slate-950 p-5 text-slate-300 md:min-h-screen md:w-64">
         <div className="mb-9 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500 text-xl font-bold text-white">
-            T
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-white">
-              TaskFlow
-            </h1>
-            <p className="text-xs text-slate-400">Work, organized.</p>
-          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500 text-xl font-bold text-white">T</div>
+          <div><h1 className="text-xl font-bold tracking-tight text-white">TaskFlow</h1><p className="text-xs text-slate-400">Work, organized.</p></div>
         </div>
-
-        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
-          Workspace
-        </p>
-
+        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-widest text-slate-500">Workspace</p>
         <nav className="flex flex-col gap-2" aria-label="Main navigation">
           {['My Boards', 'Favorites', 'Recent'].map((item) => (
-            <button
-              key={item}
-              onClick={() => setActiveNav(item)}
-              className={`flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition ${
-                activeNav === item
-                  ? 'bg-indigo-500 text-white'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <span aria-hidden="true">
-                {item === 'My Boards'
-                  ? '▦'
-                  : item === 'Favorites'
-                    ? '☆'
-                    : '◷'}
-              </span>
-              {item}
-              {item === 'My Boards' && (
-                <span className="ml-auto text-xs">1</span>
-              )}
+            <button key={item} onClick={() => setActiveNav(item)} className={`flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition ${activeNav === item ? 'bg-indigo-500 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+              <span aria-hidden="true">{item === 'My Boards' ? '▦' : item === 'Favorites' ? '☆' : '◷'}</span>{item}
+              {item === 'My Boards' && <span className="ml-auto text-xs">1</span>}
             </button>
           ))}
         </nav>
-
         <div className="mt-8 border-t border-slate-800 pt-5">
-          <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Workspace status
-          </p>
+          <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-widest text-slate-500">Workspace status</p>
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-white">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              Workspace ready
-            </div>
-            <p className="text-xs leading-5 text-slate-400">
-              Organize tasks and keep every project moving.
-            </p>
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-white"><span className="h-2 w-2 rounded-full bg-emerald-400" />Workspace ready</div>
+            <p className="text-xs leading-5 text-slate-400">Organize tasks and keep every project moving.</p>
           </div>
         </div>
-
         <div className="mt-6 border-t border-slate-800 pt-5 md:mt-auto">
           <div className="flex items-center gap-3 rounded-lg p-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-400 font-semibold text-white">
-              TF
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-white">TaskFlow User</p>
-              <p className="text-xs text-slate-400">Workspace member</p>
-            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-400 font-semibold text-white">TF</div>
+            <div><p className="text-sm font-semibold text-white">TaskFlow User</p><p className="text-xs text-slate-400">Workspace member</p></div>
           </div>
         </div>
       </aside>
 
       <main className="min-w-0 flex-1 p-5 sm:p-8 lg:p-10">
         <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="mb-2 text-sm font-medium text-indigo-600">
-              YOUR WORKSPACE
-            </p>
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900">
-              {activeBoard}
-            </h2>
-            <p className="mt-2 text-sm text-slate-500">
-              Plan, track, and complete your work.
-            </p>
-          </div>
-
-          <button
-            onClick={createTask}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-          >
-            <span className="text-lg" aria-hidden="true">+</span>
-            Add task
-          </button>
+          <div><p className="mb-2 text-sm font-medium text-indigo-600">YOUR WORKSPACE</p><h2 className="text-3xl font-bold tracking-tight text-slate-900">{activeBoard}</h2><p className="mt-2 text-sm text-slate-500">Plan, track, and complete your work.</p></div>
+          <button onClick={createTask} disabled={dataLoading || !board} className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"><span className="text-lg" aria-hidden="true">+</span>Add task</button>
         </header>
+
+        {dataLoading && <p role="status" className="mb-4 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-700">Loading your board...</p>}
+        {dataError && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{dataError}</p>}
+        {notice && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</p>}
 
         <section className="mb-6 grid gap-4 sm:grid-cols-3">
           {[
-            {
-              label: 'Total tasks',
-              value: tasks.length,
-              helper: 'Across this board',
-            },
-            {
-              label: 'In progress',
-              value: tasks.filter((task) => task.status === 'progress').length,
-              helper: 'Currently underway',
-            },
-            {
-              label: 'Completed',
-              value: tasks.filter((task) => task.status === 'done').length,
-              helper: 'Successfully finished',
-            },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-            >
-              <p className="text-sm text-slate-500">{stat.label}</p>
-              <p className="mt-2 text-3xl font-bold text-slate-900">
-                {stat.value}
-              </p>
-              <p className="mt-1 text-xs text-slate-400">{stat.helper}</p>
-            </div>
-          ))}
+            { label: 'Total tasks', value: tasks.length, helper: 'Across this board' },
+            { label: 'In progress', value: tasks.filter((task) => inProgressIds.includes(task.status)).length, helper: 'Currently underway' },
+            { label: 'Completed', value: tasks.filter((task) => doneIds.includes(task.status)).length, helper: 'Successfully finished' },
+          ].map((stat) => <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm text-slate-500">{stat.label}</p><p className="mt-2 text-3xl font-bold text-slate-900">{stat.value}</p><p className="mt-1 text-xs text-slate-400">{stat.helper}</p></div>)}
         </section>
 
         <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-slate-900">Board tasks</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Drag tasks between columns to update their status.
-            </p>
-          </div>
-
-          <label className="block w-full sm:max-w-xs">
-            <span className="sr-only">Search tasks</span>
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search tasks..."
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            />
-          </label>
+          <div><h3 className="text-lg font-bold text-slate-900">Board tasks</h3><p className="mt-1 text-sm text-slate-500">Drag tasks between columns to update their status.</p></div>
+          <label className="block w-full sm:max-w-xs"><span className="sr-only">Search tasks</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search tasks..." className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" /></label>
         </div>
 
-        {notice && (
-          <p
-            role="status"
-            className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
-          >
-            {notice}
-          </p>
-        )}
-
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragEnd={handleDragEnd}
-        >
+        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
           <div className="grid items-start gap-4 lg:grid-cols-3">
-            {columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                tasks={visibleTasks.filter(
-                  (task) => task.status === column.id,
-                )}
-              />
-            ))}
+            {columns.map((column) => <KanbanColumn key={column.id} column={column} tasks={visibleTasks.filter((task) => task.status === column.id)} />)}
           </div>
         </DndContext>
-
-        <footer className="mt-12 border-t border-slate-200 py-6 text-center text-xs text-slate-400">
-          TaskFlow · Make work flow better.
-        </footer>
+        <footer className="mt-12 border-t border-slate-200 py-6 text-center text-xs text-slate-400">TaskFlow · Make work flow better.</footer>
       </main>
     </div>
   )
