@@ -131,14 +131,19 @@ const createTask = async (req, res) => {
       priority,
       dueDate,
     });
-
     await task.populate("column", "title position");
+    const io = req.app.get("io");
+
+    if (io) {
+      io.to(`board:${result.board._id}`).emit("task:created", task);
+    }
 
     return res.status(201).json({
       success: true,
       message: "Task created successfully",
       data: task,
     });
+
   } catch (error) {
     if (error.name === "ValidationError" || error.name === "CastError") {
       return res.status(400).json({
@@ -187,7 +192,6 @@ const updateTask = async (req, res) => {
         message: "Task not found",
       });
     }
-
     const allowedFields = [
       "title",
       "description",
@@ -285,14 +289,22 @@ const updateTask = async (req, res) => {
       task.column = column._id;
     }
 
+
     await task.save();
     await task.populate("column", "title position");
+    // Broadcast the updated task to clients in this board.
+    const io = req.app.get("io");
+
+    if (io) {
+      io.to(`board:${board._id}`).emit("task:updated", task);
+    }
 
     return res.status(200).json({
       success: true,
       message: "Task updated successfully",
       data: task,
     });
+
   } catch (error) {
     if (error.name === "ValidationError" || error.name === "CastError") {
       return res.status(400).json({
@@ -343,11 +355,20 @@ const deleteTask = async (req, res) => {
     }
 
     await task.deleteOne();
+    const io = req.app.get("io");
+
+    if (io) {
+      io.to(`board:${board._id}`).emit("task:deleted", {
+        taskId: taskId,
+        boardId: board._id.toString(),
+      });
+    }
 
     return res.status(200).json({
       success: true,
       message: "Task deleted successfully",
     });
+
   } catch (error) {
     console.error("Delete task error:", error.message);
 

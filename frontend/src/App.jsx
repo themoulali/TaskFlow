@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiRequest } from './api/api.js'
+import { socket } from './socket.js'
 import {
   DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors,
   closestCorners, useDroppable,
@@ -87,6 +88,7 @@ function App() {
   const [loginError, setLoginError] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
   const [tasks, setTasks] = useState([])
+  const [onlineUserIds, setOnlineUserIds] = useState([])
   const [columns, setColumns] = useState([])
   const [board, setBoard] = useState(null)
   const [dataLoading, setDataLoading] = useState(false)
@@ -95,6 +97,109 @@ function App() {
   const [activeNav, setActiveNav] = useState('My Boards')
   const [notice, setNotice] = useState('')
   const activeBoard = board?.title || 'TaskFlow Project'
+  const onlineUserCount = onlineUserIds.length
+  useEffect(() => {
+    if (!token || !board?._id) return undefined
+
+    function handleTaskCreated(newTask) {
+      if (!newTask?._id) return
+
+      setTasks((current) => {
+        const alreadyExists = current.some(
+          (task) => task.id === newTask._id,
+        )
+
+        if (alreadyExists) return current
+
+        return [...current, mapTask(newTask)]
+      })
+    }
+
+    socket.on('task:created', handleTaskCreated)
+
+    return () => {
+      socket.off('task:created', handleTaskCreated)
+    }
+  }, [token, board?._id])
+
+  useEffect(() => {
+    if (!token || !board?._id) return undefined
+    function handleTaskUpdated(updatedTask) {
+      if (!updatedTask?._id) return
+
+      setTasks((current) =>
+        current.map((task) =>
+          task.id === updatedTask._id
+            ? mapTask(updatedTask)
+            : task,
+        ),
+      )
+    }
+
+    socket.on('task:updated', handleTaskUpdated)
+
+    return () => {
+      socket.off('task:updated', handleTaskUpdated)
+    }
+  }, [token, board?._id])
+  useEffect(() => {
+    if (!token || !board?._id) return undefined
+    function handleTaskDeleted(deletedTask) {
+      if (!deletedTask?.taskId) return
+
+      setTasks((current) =>
+        current.filter((task) => task.id !== deletedTask.taskId),
+      )
+    }
+
+    socket.on('task:deleted', handleTaskDeleted)
+
+    return () => {
+      socket.off('task:deleted', handleTaskDeleted)
+    }
+  }, [token, board?._id])
+
+  useEffect(() => {
+    if (!token || !board?._id) {
+      setOnlineUserIds([])
+      return undefined
+    }
+    function handlePresenceUpdated(presence) {
+      if (presence?.boardId !== board._id) return
+
+      setOnlineUserIds(presence.onlineUserIds || [])
+    }
+
+    socket.on('presence:updated', handlePresenceUpdated)
+
+    return () => {
+      socket.off('presence:updated', handlePresenceUpdated)
+    }
+  }, [token, board?._id])
+
+  useEffect(() => {
+    if (!token) {
+      socket.disconnect()
+      return undefined
+    }
+    function handleConnect() {
+      console.log('TaskFlow socket connected:', socket.id)
+    }
+
+    function handleConnectError(error) {
+      console.error('TaskFlow socket connection failed:', error.message)
+    }
+
+    socket.on('connect', handleConnect)
+    socket.on('connect_error', handleConnectError)
+    socket.connect()
+
+    return () => {
+      socket.off('connect', handleConnect)
+      socket.off('connect_error', handleConnectError)
+      socket.disconnect()
+    }
+  }, [token])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -165,6 +270,33 @@ function App() {
     loadBoardData()
     return () => { cancelled = true }
   }, [token])
+
+  useEffect(() => {
+    if (!token || !board?._id) return undefined
+
+    const joinSelectedBoard = () => {
+      socket.emit('board:join', board._id, (result) => {
+        if (result?.success) {
+          console.log('Joined board room successfully:', result.boardId)
+        } else {
+          console.error(
+            'Failed to join board room:',
+            result?.message || 'Unknown error',
+          )
+        }
+      })
+    }
+
+    socket.on('connect', joinSelectedBoard)
+
+    if (socket.connected) {
+      joinSelectedBoard()
+    }
+
+    return () => {
+      socket.off('connect', joinSelectedBoard)
+    }
+  }, [token, board?._id])
 
   async function createTask() {
     if (!board?._id) {
@@ -295,7 +427,25 @@ function App() {
 
       <main className="min-w-0 flex-1 p-5 sm:p-8 lg:p-10">
         <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div><p className="mb-2 text-sm font-medium text-indigo-600">YOUR WORKSPACE</p><h2 className="text-3xl font-bold tracking-tight text-slate-900">{activeBoard}</h2><p className="mt-2 text-sm text-slate-500">Plan, track, and complete your work.</p></div>
+          <div>
+            <p className="mb-2 text-sm font-medium text-indigo-600">
+              YOUR WORKSPACE
+            </p>
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900">
+              {activeBoard}
+            </h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Plan, track, and complete your work.
+            </p>
+            <p className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+              <span
+                className="h-2 w-2 rounded-full bg-emerald-500"
+                aria-hidden="true"
+              />
+              {onlineUserCount} {onlineUserCount === 1 ? 'user' : 'users'} online
+            </p>
+          </div>
+
           <button onClick={createTask} disabled={dataLoading || !board} className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"><span className="text-lg" aria-hidden="true">+</span>Add task</button>
         </header>
 
