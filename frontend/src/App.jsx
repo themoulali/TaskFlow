@@ -21,16 +21,26 @@ const normalizePriority = (value) => {
   const text = String(value || 'medium').toLowerCase()
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
-const mapTask = (task) => ({
-  id: task._id,
-  title: task.title,
-  description: task.description || '',
-  priority: normalizePriority(task.priority),
-  status: task.column?._id || task.column,
-  position: Number(task.position || 0),
-})
 
-function TaskCard({ task }) {
+const mapTask = (task) => {
+  const columnId =
+    task.column?._id ??
+    task.column ??
+    task.columnId ??
+    task.status
+
+  return {
+    id: task._id ?? task.id,
+    title: task.title,
+    description: task.description || '',
+    priority: normalizePriority(task.priority),
+    columnId,
+    status: columnId,
+    position: Number(task.position || 0),
+  }
+}
+
+function TaskCard({ task, onEdit, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: task.id, data: { status: task.status } })
   const style = {
@@ -51,14 +61,46 @@ function TaskCard({ task }) {
       <h4 className="font-semibold leading-6 text-slate-900">{task.title}</h4>
       <p className="mt-2 text-sm leading-5 text-slate-500">{task.description || 'No description added.'}</p>
       <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-        <span className="text-xs text-slate-400">{String(task.id).slice(-8).toUpperCase()}</span>
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">TF</span>
+        <span className="text-xs text-slate-400">
+          {String(task.id).slice(-8).toUpperCase()}
+        </span>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                onEdit(task)
+              }}
+              className="rounded-lg border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+            >
+              Edit
+            </button>
+
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                onDelete(task)
+              }}
+              className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+            >
+              Delete
+            </button>
+          </div>
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">
+            TF
+          </span>
+        </div>
       </div>
     </article>
   )
 }
 
-function KanbanColumn({ column, tasks }) {
+function KanbanColumn({ column, tasks, onEdit, onDelete }) {
   const { setNodeRef } = useDroppable({ id: column.id, data: { status: column.id } })
   return (
     <section ref={setNodeRef} className="flex min-h-80 min-w-0 flex-col rounded-2xl bg-slate-100 p-3 sm:p-4" aria-label={`${column.title} column`}>
@@ -71,7 +113,14 @@ function KanbanColumn({ column, tasks }) {
       </div>
       <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-1 flex-col gap-3">
-          {tasks.map((task) => <TaskCard key={task.id} task={task} />)}
+          {tasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          ))}
           {tasks.length === 0 && <div className="flex min-h-24 flex-1 items-center justify-center rounded-xl border-2 border-dashed border-slate-300 px-3 text-center text-sm text-slate-400">Drop a task here</div>}
         </div>
       </SortableContext>
@@ -321,10 +370,90 @@ function App() {
         body: { title: title.trim(), description: description.trim(), columnId: todoColumn.id, priority: 'medium' },
       })
       if (!result.data?._id) throw new Error('The API did not return the saved task.')
-      setTasks((current) => [...current, mapTask(result.data)])
+      setTasks((current) => {
+        const alreadyExists = current.some(
+          (task) => task.id === result.data._id,
+        )
+
+        if (alreadyExists) return current
+
+        return [...current, mapTask(result.data)]
+      })
       setNotice('Task created and saved successfully.')
     } catch (error) {
       setDataError(error.message || 'Failed to create task.')
+    }
+  }
+  async function editTask(task) {
+    const title = window.prompt('Edit task title:', task.title)
+
+    if (title === null) return
+
+    if (!title.trim()) {
+      setDataError('Task title cannot be empty.')
+      return
+    }
+
+    const description = window.prompt(
+      'Edit task description:',
+      task.description || '',
+    )
+
+    if (description === null) return
+
+    setDataError('')
+    setNotice('')
+
+    try {
+      const response = await apiRequest(`/tasks/${task.id}`, {
+        token,
+        method: 'PATCH',
+        body: {
+          title: title.trim(),
+          description: description.trim(),
+        },
+      })
+
+      if (!response.data?._id) {
+        throw new Error('The API did not return the updated task.')
+      }
+
+      setTasks((current) =>
+        current.map((currentTask) =>
+          currentTask.id === task.id
+            ? mapTask(response.data)
+            : currentTask,
+        ),
+      )
+
+      setNotice('Task updated and saved successfully.')
+    } catch (error) {
+      setDataError(error.message || 'Failed to update task.')
+    }
+  }
+  async function deleteTask(task) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${task.title}"?`,
+    )
+
+    if (!confirmed) return
+
+    setDataError('')
+    setNotice('')
+
+    try {
+      await apiRequest(`/tasks/${task.id}`, {
+        token,
+        method: 'DELETE',
+      })
+
+      setTasks((current) =>
+        current.filter((currentTask) => currentTask.id !== task.id),
+      )
+
+      setNotice('Task deleted successfully.')
+    } catch (error) {
+      setDataError(error.message || 'Failed to delete task.')
     }
   }
 
@@ -468,7 +597,15 @@ function App() {
 
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
           <div className="grid items-start gap-4 lg:grid-cols-3">
-            {columns.map((column) => <KanbanColumn key={column.id} column={column} tasks={visibleTasks.filter((task) => task.status === column.id)} />)}
+            {columns.map((column) => (
+              <KanbanColumn
+                key={column.id}
+                column={column}
+                tasks={visibleTasks.filter((task) => task.columnId === column.id)}
+                onEdit={editTask}
+                onDelete={deleteTask}
+              />
+            ))}
           </div>
         </DndContext>
         <footer className="mt-12 border-t border-slate-200 py-6 text-center text-xs text-slate-400">TaskFlow · Make work flow better.</footer>
