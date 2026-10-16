@@ -137,7 +137,10 @@ function App() {
   const [loginError, setLoginError] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
   const [tasks, setTasks] = useState([])
-  const [onlineUserIds, setOnlineUserIds] = useState([])
+  const [onlinePresence, setOnlinePresence] = useState({
+    boardId: null,
+    userIds: [],
+  })
   const [columns, setColumns] = useState([])
   const [board, setBoard] = useState(null)
   const [dataLoading, setDataLoading] = useState(false)
@@ -146,6 +149,11 @@ function App() {
   const [activeNav, setActiveNav] = useState('My Boards')
   const [notice, setNotice] = useState('')
   const activeBoard = board?.title || 'TaskFlow Project'
+  const onlineUserIds =
+    token && board?._id === onlinePresence.boardId
+      ? onlinePresence.userIds
+      : []
+
   const onlineUserCount = onlineUserIds.length
   useEffect(() => {
     if (!token || !board?._id) return undefined
@@ -210,13 +218,16 @@ function App() {
 
   useEffect(() => {
     if (!token || !board?._id) {
-      setOnlineUserIds([])
       return undefined
     }
+
     function handlePresenceUpdated(presence) {
       if (presence?.boardId !== board._id) return
 
-      setOnlineUserIds(presence.onlineUserIds || [])
+      setOnlinePresence({
+        boardId: presence.boardId,
+        userIds: presence.onlineUserIds || [],
+      })
     }
 
     socket.on('presence:updated', handlePresenceUpdated)

@@ -98,10 +98,6 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    console.log("LOGIN DEBUG - Content-Type:", "check request in app.js");
-    console.log("LOGIN DEBUG - req.body:", req.body);
-    console.log("LOGIN DEBUG - email:", req.body?.email);
-    console.log("LOGIN DEBUG - password provided:", Boolean(req.body?.password));
     const { email, password } = req.body;
 
     if (
